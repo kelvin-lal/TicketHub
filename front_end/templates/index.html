@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ticket-hub</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <h1>ticket-hub</h1>
+      </div>
+      <div class="controls">
+        <label for="datacenter">Datacenter</label>
+        <input
+          id="datacenter"
+          type="text"
+          value="{{ default_datacenter }}"
+          spellcheck="false"
+        />
+        <button id="refresh" type="button">Fetch tickets</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="status" class="status idle">
+        Ready. Click <strong>Fetch tickets</strong> to query Zendesk via Claude.
+      </section>
+
+      <section id="summary" class="summary" hidden>
+        <div><span class="num" id="count">0</span> open tickets</div>
+        <div class="breakdown" id="breakdown"></div>
+      </section>
+
+      <section id="tickets" class="tickets"></section>
+    </main>
+
+    <template id="ticket-card">
+      <article class="ticket">
+        <header>
+          <span class="ticket-id"></span>
+          <span class="ticket-status"></span>
+        </header>
+        <p class="ticket-subject"></p>
+        <details>
+          <summary>Raw payload</summary>
+          <pre class="ticket-raw"></pre>
+        </details>
+      </article>
+    </template>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
