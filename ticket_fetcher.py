@@ -30,6 +30,22 @@ CLAUDE_PROMPT_TEMPLATE = (
     "Do not add commentary, markdown, or code fences."
 )
 
+CLAUDE_PROMPT_IDS_TEMPLATE = (
+    "Use the aaa-governance-gts:supportdog skill to run "
+    "`supportdog --datacenter {datacenter} zendesk get-my-zendesk-tickets`. "
+    "Return ONLY a JSON object of the form "
+    '{{"ids": [<ticket_id>, ...]}} containing every open ticket id. '
+    "Do not add commentary, markdown, or code fences."
+)
+
+CLAUDE_PROMPT_SINGLE_TEMPLATE = (
+    "Use the aaa-governance-gts:supportdog skill to fetch the Zendesk ticket "
+    "with id {ticket_id} on datacenter {datacenter}. "
+    "Return ONLY the raw JSON object for that single ticket "
+    "(fields like id, subject, status, etc.). "
+    "Do not add commentary, markdown, or code fences."
+)
+
 
 class TicketFetchError(RuntimeError):
     """Raised when the Claude CLI invocation fails or returns unparseable output."""
@@ -122,3 +138,68 @@ def fetch_tickets(
 def fetch_tickets_as_dicts(datacenter: str = DEFAULT_DATACENTER) -> list[dict[str, Any]]:
     """Convenience wrapper that returns plain dicts (handy for JSON APIs)."""
     return [t.to_dict() for t in fetch_tickets(datacenter=datacenter)]
+
+
+def _run_claude(prompt: str, timeout: int) -> str:
+    claude_bin = _ensure_claude_available()
+    try:
+        proc = subprocess.run(
+            [claude_bin, "-p", prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TicketFetchError(f"claude -p timed out after {timeout}s") from exc
+    if proc.returncode != 0:
+        raise TicketFetchError(
+            f"claude -p exited {proc.returncode}\nstderr:\n{proc.stderr.strip()}"
+        )
+    return proc.stdout
+
+
+def fetch_ticket_ids(
+    datacenter: str = DEFAULT_DATACENTER,
+    timeout: int = 180,
+) -> list[int | str]:
+    """Phase 1: ask Claude for just the open ticket ids."""
+    payload = _extract_json(
+        _run_claude(
+            CLAUDE_PROMPT_IDS_TEMPLATE.format(datacenter=datacenter),
+            timeout=timeout,
+        )
+    )
+    ids = payload.get("ids")
+    if ids is None and isinstance(payload.get("data"), list):
+        ids = [row.get("id") or row.get("ticket_id") for row in payload["data"]]
+    if not isinstance(ids, list):
+        raise TicketFetchError(f"Could not find ticket ids in payload: {payload!r}")
+    return [i for i in ids if i not in (None, "")]
+
+
+def fetch_single_ticket(
+    ticket_id: int | str,
+    datacenter: str = DEFAULT_DATACENTER,
+    timeout: int = 180,
+) -> Ticket:
+    """Phase 2: ask Claude for the full details of a single ticket."""
+    payload = _extract_json(
+        _run_claude(
+            CLAUDE_PROMPT_SINGLE_TEMPLATE.format(
+                datacenter=datacenter, ticket_id=ticket_id
+            ),
+            timeout=timeout,
+        )
+    )
+    row = payload.get("data", payload)
+    if isinstance(row, list) and row:
+        row = row[0]
+    if not isinstance(row, dict):
+        raise TicketFetchError(f"Unexpected ticket payload shape: {payload!r}")
+    return Ticket(
+        id=row.get("id") or row.get("ticket_id") or ticket_id,
+        subject=row.get("subject") or row.get("title") or "(no subject)",
+        status=row.get("status") or "unknown",
+        raw=row,
+    )

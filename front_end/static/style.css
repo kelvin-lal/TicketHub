@@ -116,6 +116,76 @@ main {
   margin: 0 auto;
 }
 
+.progress-panel {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  margin-bottom: 18px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.progress-counts {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent-2);
+  font-size: 13px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  border: none;
+  border-radius: 999px;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--panel-2);
+}
+
+.progress-bar::-webkit-progress-bar {
+  background: var(--panel-2);
+  border-radius: 999px;
+}
+
+.progress-bar::-webkit-progress-value {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.progress-bar::-moz-progress-bar {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 999px;
+}
+
+.progress-bar.indeterminate::-webkit-progress-value {
+  background: linear-gradient(
+    90deg,
+    var(--panel-2) 0%,
+    var(--accent) 50%,
+    var(--panel-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: progress-shimmer 1.4s linear infinite;
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .status {
   padding: 12px 14px;
   border-radius: 8px;

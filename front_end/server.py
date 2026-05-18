@@ -10,11 +10,12 @@ Serves a single-page UI at `/` and exposes `/api/tickets` which proxies
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -23,6 +24,8 @@ if str(ROOT) not in sys.path:
 from ticket_fetcher import (  # noqa: E402  (import after sys.path tweak)
     DEFAULT_DATACENTER,
     TicketFetchError,
+    fetch_single_ticket,
+    fetch_ticket_ids,
     fetch_tickets,
 )
 
@@ -57,6 +60,60 @@ def create_app() -> Flask:
                 "count": len(tickets),
                 "tickets": [t.to_dict() for t in tickets],
             }
+        )
+
+    @app.get("/api/tickets/stream")
+    def api_tickets_stream():
+        dc = request.args.get("datacenter") or app.config["DEFAULT_DATACENTER"]
+
+        def sse(event: str, payload: dict) -> str:
+            return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+        @stream_with_context
+        def generate():
+            yield sse("phase", {"phase": "counting", "datacenter": dc})
+            try:
+                ids = fetch_ticket_ids(datacenter=dc)
+            except TicketFetchError as exc:
+                yield sse("error", {"error": str(exc), "datacenter": dc})
+                return
+
+            total = len(ids)
+            yield sse("total", {"total": total, "datacenter": dc, "ids": ids})
+
+            for index, ticket_id in enumerate(ids, start=1):
+                try:
+                    ticket = fetch_single_ticket(ticket_id, datacenter=dc)
+                except TicketFetchError as exc:
+                    yield sse(
+                        "error",
+                        {
+                            "error": str(exc),
+                            "datacenter": dc,
+                            "ticket_id": ticket_id,
+                            "index": index,
+                            "total": total,
+                        },
+                    )
+                    return
+                yield sse(
+                    "ticket",
+                    {
+                        "index": index,
+                        "total": total,
+                        "ticket": ticket.to_dict(),
+                    },
+                )
+
+            yield sse("done", {"count": total, "datacenter": dc})
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     return app

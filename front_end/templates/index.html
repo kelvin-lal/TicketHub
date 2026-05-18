@@ -20,14 +20,19 @@
           value="{{ default_datacenter }}"
           spellcheck="false"
         />
-        <button id="refresh" type="button">Fetch tickets</button>
       </div>
     </header>
 
     <main>
-      <section id="status" class="status idle">
-        Ready. Click <strong>Fetch tickets</strong> to query Zendesk via Claude.
+      <section id="progress-panel" class="progress-panel">
+        <div class="progress-label">
+          <span id="progress-phase">Starting agent…</span>
+          <span id="progress-counts" class="progress-counts"></span>
+        </div>
+        <progress id="progress-bar" class="progress-bar" value="0" max="1"></progress>
       </section>
+
+      <section id="status" class="status error" hidden></section>
 
       <section id="summary" class="summary" hidden>
         <div><span class="num" id="count">0</span> open tickets</div>
