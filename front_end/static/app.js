@@ -4,18 +4,30 @@
   const summaryEl = document.getElementById("summary");
   const countEl = document.getElementById("count");
   const breakdownEl = document.getElementById("breakdown");
-  const ticketsEl = document.getElementById("tickets");
+  const openSection = document.getElementById("open-section");
+  const pendingSection = document.getElementById("pending-section");
+  const openEl = document.getElementById("tickets-open");
+  const pendingEl = document.getElementById("tickets-pending-hold");
   const cardTpl = document.getElementById("ticket-card");
   const progressPanel = document.getElementById("progress-panel");
   const progressBar = document.getElementById("progress-bar");
   const progressPhase = document.getElementById("progress-phase");
   const progressCounts = document.getElementById("progress-counts");
 
+  const COUNT_PHASE_END = 0.1;
+  const COUNT_PHASE_CAP = 0.09;
+  const COUNT_PHASE_DURATION_MS = 30_000;
+  const FETCH_PHASE_CAP = 0.99;
+  const FETCH_PHASE_DURATION_MS = 60_000;
+
+  progressBar.max = 1;
+
   let evtSource = null;
-  let receivedTickets = [];
+  let animationTimer = null;
 
   function showError(message) {
     statusEl.hidden = false;
+    statusEl.className = "status error";
     statusEl.textContent = message;
   }
 
@@ -28,23 +40,52 @@
     progressPhase.textContent = text;
   }
 
-  function setCounts(current, total) {
-    if (total > 0) {
-      progressCounts.textContent = `${current} / ${total}`;
-    } else {
-      progressCounts.textContent = "";
+  function setCounts(text) {
+    progressCounts.textContent = text || "";
+  }
+
+  function setBar(fraction) {
+    progressBar.value = Math.max(0, Math.min(1, fraction));
+  }
+
+  function stopAnimation() {
+    if (animationTimer !== null) {
+      clearInterval(animationTimer);
+      animationTimer = null;
     }
   }
 
-  function setProgress(current, total) {
-    progressBar.max = total > 0 ? total : 1;
-    progressBar.value = current;
-    progressBar.classList.toggle("indeterminate", total === 0);
+  function animateBar(fromFraction, toFraction, durationMs, capFraction) {
+    stopAnimation();
+    const start = performance.now();
+    setBar(fromFraction);
+    animationTimer = setInterval(() => {
+      const elapsed = performance.now() - start;
+      const ratio = Math.min(elapsed / durationMs, 1);
+      const target = fromFraction + (toFraction - fromFraction) * ratio;
+      const capped = Math.min(target, capFraction);
+      setBar(capped);
+      if (ratio >= 1) {
+        stopAnimation();
+      }
+    }, 50);
+  }
+
+  function ticketStatus(t) {
+    const raw = t.raw || {};
+    const attrs = raw.attributes || {};
+    return (attrs.status || raw.status || t.status || "unknown").toLowerCase();
+  }
+
+  function ticketSubject(t) {
+    const raw = t.raw || {};
+    const attrs = raw.attributes || {};
+    return attrs.subject || raw.subject || t.subject || "(no subject)";
   }
 
   function renderBreakdown(tickets) {
     const counts = tickets.reduce((acc, t) => {
-      const k = (t.status || "unknown").toLowerCase();
+      const k = ticketStatus(t);
       acc[k] = (acc[k] || 0) + 1;
       return acc;
     }, {});
@@ -59,21 +100,41 @@
       });
   }
 
-  function appendTicketCard(t) {
+  function appendTicket(container, t) {
     const node = cardTpl.content.firstElementChild.cloneNode(true);
     node.querySelector(".ticket-id").textContent = `#${t.id}`;
     const cardStatus = node.querySelector(".ticket-status");
-    const statusKey = (t.status || "unknown").toLowerCase();
+    const statusKey = ticketStatus(t);
     cardStatus.textContent = statusKey;
     cardStatus.classList.add(`status-${statusKey}`);
-    node.querySelector(".ticket-subject").textContent =
-      t.subject || "(no subject)";
+    node.querySelector(".ticket-subject").textContent = ticketSubject(t);
     node.querySelector(".ticket-raw").textContent = JSON.stringify(
       t.raw || t,
       null,
       2
     );
-    ticketsEl.appendChild(node);
+    container.appendChild(node);
+  }
+
+  function renderTickets(tickets) {
+    openEl.innerHTML = "";
+    pendingEl.innerHTML = "";
+
+    const open = [];
+    const pending = [];
+    for (const t of tickets) {
+      if (ticketStatus(t) === "open") {
+        open.push(t);
+      } else {
+        pending.push(t);
+      }
+    }
+
+    for (const t of open) appendTicket(openEl, t);
+    for (const t of pending) appendTicket(pendingEl, t);
+
+    openSection.hidden = open.length === 0;
+    pendingSection.hidden = pending.length === 0;
   }
 
   function startStream() {
@@ -81,13 +142,15 @@
     dcInput.disabled = true;
     clearError();
     summaryEl.hidden = true;
-    ticketsEl.innerHTML = "";
-    receivedTickets = [];
+    openEl.innerHTML = "";
+    pendingEl.innerHTML = "";
+    openSection.hidden = true;
+    pendingSection.hidden = true;
 
     progressPanel.hidden = false;
     setPhase("Starting agent…");
-    setCounts(0, 0);
-    setProgress(0, 0);
+    setCounts("");
+    animateBar(0, COUNT_PHASE_END, COUNT_PHASE_DURATION_MS, COUNT_PHASE_CAP);
 
     if (evtSource) {
       evtSource.close();
@@ -100,33 +163,46 @@
       const data = JSON.parse(e.data);
       if (data.phase === "counting") {
         setPhase(`Counting open tickets on ${data.datacenter}…`);
+      } else if (data.phase === "fetching") {
+        setPhase(`Fetching tickets from ${data.datacenter}…`);
       }
     });
 
     evtSource.addEventListener("total", (e) => {
       const data = JSON.parse(e.data);
-      setPhase(`Fetching tickets from ${data.datacenter}`);
-      setCounts(0, data.total);
-      setProgress(0, data.total);
-      if (data.total === 0) {
-        finishStream(data.datacenter, 0);
+      setCounts(`${data.total} ticket${data.total === 1 ? "" : "s"}`);
+      stopAnimation();
+      setBar(COUNT_PHASE_END);
+      if (data.total > 0) {
+        animateBar(
+          COUNT_PHASE_END,
+          1,
+          FETCH_PHASE_DURATION_MS,
+          FETCH_PHASE_CAP
+        );
       }
-    });
-
-    evtSource.addEventListener("ticket", (e) => {
-      const data = JSON.parse(e.data);
-      receivedTickets.push(data.ticket);
-      appendTicketCard(data.ticket);
-      setCounts(data.index, data.total);
-      setProgress(data.index, data.total);
     });
 
     evtSource.addEventListener("done", (e) => {
       const data = JSON.parse(e.data);
-      finishStream(data.datacenter, data.count);
+      stopAnimation();
+      setBar(1);
+      const tickets = data.tickets || [];
+      countEl.textContent = data.count;
+      renderBreakdown(tickets);
+      renderTickets(tickets);
+      summaryEl.hidden = false;
+      progressPanel.hidden = true;
+      if (data.count === 0) {
+        statusEl.hidden = false;
+        statusEl.className = "status idle";
+        statusEl.textContent = `No open tickets on ${data.datacenter}.`;
+      }
+      stopStream();
     });
 
     evtSource.addEventListener("error", (e) => {
+      stopAnimation();
       if (e.data) {
         try {
           const data = JSON.parse(e.data);
@@ -137,20 +213,9 @@
       } else {
         showError("Connection error while fetching tickets.");
       }
+      progressPanel.hidden = true;
       stopStream();
     });
-  }
-
-  function finishStream(datacenter, count) {
-    countEl.textContent = count;
-    renderBreakdown(receivedTickets);
-    summaryEl.hidden = false;
-    progressPanel.hidden = true;
-    if (count === 0) {
-      showError(`No open tickets on ${datacenter}.`);
-      statusEl.className = "status idle";
-    }
-    stopStream();
   }
 
   function stopStream() {

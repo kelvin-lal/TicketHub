@@ -24,7 +24,6 @@ if str(ROOT) not in sys.path:
 from ticket_fetcher import (  # noqa: E402  (import after sys.path tweak)
     DEFAULT_DATACENTER,
     TicketFetchError,
-    fetch_single_ticket,
     fetch_ticket_ids,
     fetch_tickets,
 )
@@ -79,33 +78,30 @@ def create_app() -> Flask:
                 return
 
             total = len(ids)
-            yield sse("total", {"total": total, "datacenter": dc, "ids": ids})
+            yield sse("total", {"total": total, "datacenter": dc})
 
-            for index, ticket_id in enumerate(ids, start=1):
-                try:
-                    ticket = fetch_single_ticket(ticket_id, datacenter=dc)
-                except TicketFetchError as exc:
-                    yield sse(
-                        "error",
-                        {
-                            "error": str(exc),
-                            "datacenter": dc,
-                            "ticket_id": ticket_id,
-                            "index": index,
-                            "total": total,
-                        },
-                    )
-                    return
+            if total == 0:
                 yield sse(
-                    "ticket",
-                    {
-                        "index": index,
-                        "total": total,
-                        "ticket": ticket.to_dict(),
-                    },
+                    "done",
+                    {"count": 0, "datacenter": dc, "tickets": []},
                 )
+                return
 
-            yield sse("done", {"count": total, "datacenter": dc})
+            yield sse("phase", {"phase": "fetching", "datacenter": dc})
+            try:
+                tickets = fetch_tickets(datacenter=dc)
+            except TicketFetchError as exc:
+                yield sse("error", {"error": str(exc), "datacenter": dc})
+                return
+
+            yield sse(
+                "done",
+                {
+                    "count": len(tickets),
+                    "datacenter": dc,
+                    "tickets": [t.to_dict() for t in tickets],
+                },
+            )
 
         return Response(
             generate(),

@@ -38,13 +38,6 @@ CLAUDE_PROMPT_IDS_TEMPLATE = (
     "Do not add commentary, markdown, or code fences."
 )
 
-CLAUDE_PROMPT_SINGLE_TEMPLATE = (
-    "Use the aaa-governance-gts:supportdog skill to fetch the Zendesk ticket "
-    "with id {ticket_id} on datacenter {datacenter}. "
-    "Return ONLY the raw JSON object for that single ticket "
-    "(fields like id, subject, status, etc.). "
-    "Do not add commentary, markdown, or code fences."
-)
 
 
 class TicketFetchError(RuntimeError):
@@ -178,28 +171,3 @@ def fetch_ticket_ids(
     return [i for i in ids if i not in (None, "")]
 
 
-def fetch_single_ticket(
-    ticket_id: int | str,
-    datacenter: str = DEFAULT_DATACENTER,
-    timeout: int = 180,
-) -> Ticket:
-    """Phase 2: ask Claude for the full details of a single ticket."""
-    payload = _extract_json(
-        _run_claude(
-            CLAUDE_PROMPT_SINGLE_TEMPLATE.format(
-                datacenter=datacenter, ticket_id=ticket_id
-            ),
-            timeout=timeout,
-        )
-    )
-    row = payload.get("data", payload)
-    if isinstance(row, list) and row:
-        row = row[0]
-    if not isinstance(row, dict):
-        raise TicketFetchError(f"Unexpected ticket payload shape: {payload!r}")
-    return Ticket(
-        id=row.get("id") or row.get("ticket_id") or ticket_id,
-        subject=row.get("subject") or row.get("title") or "(no subject)",
-        status=row.get("status") or "unknown",
-        raw=row,
-    )

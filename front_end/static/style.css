@@ -166,26 +166,6 @@ main {
   border-radius: 999px;
 }
 
-.progress-bar.indeterminate::-webkit-progress-value {
-  background: linear-gradient(
-    90deg,
-    var(--panel-2) 0%,
-    var(--accent) 50%,
-    var(--panel-2) 100%
-  );
-  background-size: 200% 100%;
-  animation: progress-shimmer 1.4s linear infinite;
-}
-
-@keyframes progress-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 .status {
   padding: 12px 14px;
   border-radius: 8px;
@@ -245,6 +225,19 @@ main {
   color: var(--muted);
 }
 
+.tickets-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin: 0 0 10px 0;
+}
+
 .tickets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -288,17 +281,18 @@ main {
 }
 
 .ticket-status.status-open {
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.ticket-status.status-pending {
   color: var(--info);
   border-color: rgba(56, 189, 248, 0.4);
 }
 
-.ticket-status.status-pending {
-  color: var(--warn);
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
 .ticket-status.status-hold {
-  color: var(--muted);
+  color: var(--ok);
+  border-color: rgba(34, 197, 94, 0.4);
 }
 
 .ticket-status.status-solved,

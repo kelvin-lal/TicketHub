@@ -39,7 +39,15 @@
         <div class="breakdown" id="breakdown"></div>
       </section>
 
-      <section id="tickets" class="tickets"></section>
+      <section id="open-section" class="tickets-section" hidden>
+        <h2 class="section-title">Open tickets</h2>
+        <div id="tickets-open" class="tickets"></div>
+      </section>
+
+      <section id="pending-section" class="tickets-section" hidden>
+        <h2 class="section-title">Pending / On Hold</h2>
+        <div id="tickets-pending-hold" class="tickets"></div>
+      </section>
     </main>
 
     <template id="ticket-card">
